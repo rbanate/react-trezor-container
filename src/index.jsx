@@ -4,7 +4,13 @@ import HdKey from 'ethereumjs-wallet/hdkey';
 
 import TrezorConnect from './connect';
 import { DEFAULT_KD_PATH } from './constants';
-import { signTransaction, signMessage, verifyMessage } from './signing';
+import {
+  signTransaction,
+  signMessage,
+  verifyMessage,
+  trezorSignTx,
+  trezorEthereumGetAddress,
+} from './signing';
 
 export default class TrezorReactContainer extends Component {
   constructor(props) {
@@ -17,17 +23,12 @@ export default class TrezorReactContainer extends Component {
     const { wallet } = this.state.trezor;
     const { getAddresses } = this.props;
     if (!wallet && getAddresses) {
-      console.log('mounting');
       this.connectToTrezor();
     }
   }
 
   // componentDidMount() {
-  //   const { onReady } = this.props;
-  //   if (onReady) {
-  //     console.log('on ready');
-  //     onReady(this.getChildProps());
-  //   }
+  //   return trezorSignTx();
   // }
 
   getChildProps = () => {
@@ -125,7 +126,7 @@ export default class TrezorReactContainer extends Component {
 
     if (error) return this.renderError();
 
-    return this.renderLoading();
+    return null;
   }
 }
 
