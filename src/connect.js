@@ -1086,6 +1086,6 @@ function PopupManager() {
   };
 }
 
-const connect = new TrezorConnect();
+// const connect = new TrezorConnect();
 
-module.exports = connect;
+module.exports = TrezorConnect;

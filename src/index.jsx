@@ -15,21 +15,57 @@ import {
 export default class TrezorReactContainer extends Component {
   constructor(props) {
     super(props);
-    this.state = { error: false, ready: false, showAddresses: false, trezor: {} };
-    this.connectToTrezor = this.connectToTrezor.bind(this);
+    this.state = { error: false, ready: false, showAddresses: false, trezor: {}, loading: true };
+    this.handleSignTransaction = this.handleSignTransaction.bind(this);
+    this.handleSignMessage = this.handleSignMessage.bind(this);
+    // this.getDefaultPubKey = this.getDefaultPubKey.bind(this);
+    // this.getTrezor = this.getTrezor.bind(this);
+    this.ethTrezor = this.getTrezor();
   }
 
   componentWillMount() {
     const { wallet } = this.state.trezor;
     const { getAddresses } = this.props;
     if (!wallet && getAddresses) {
-      this.connectToTrezor();
+      this.getDefaultPubKey()
+        .then(result => {
+          const hdWallet = HdKey.fromExtendedKey(result.xpubkey);
+          this.setState({ trezor: { hdWallet }, showAddresses: true, loading: false });
+        })
+        .catch(error => {
+          this.setState({ showAddresses: false, loading: false, error });
+          this.props.renderError(error);
+        });
+    } else {
+      this.setState({ showAddresses: false, loading: false, error: undefined });
     }
   }
+
+  getTrezor = () => new TrezorConnect();
 
   // componentDidMount() {
   //   return trezorSignTx();
   // }
+
+  getDefaultPubKey() {
+    const { expect } = this.props;
+    const { kdPath } = expect || {};
+    if (!this.ethTrezor) this.ethTrezor = this.getTrezor();
+    this.ethTrezor.closeAfterSuccess(true);
+    return new Promise((resolve, reject) => {
+      this.ethTrezor.getXPubKey(
+        kdPath || `${DEFAULT_KD_PATH}0`,
+        response => {
+          if (response.success) {
+            resolve(response);
+          } else {
+            reject(response.error);
+          }
+        },
+        '1.4.0'
+      ); // 1.4.0 is first firmware that supports ethereum
+    });
+  }
 
   getChildProps = () => {
     const { trezor, error } = this.state;
@@ -39,7 +75,7 @@ export default class TrezorReactContainer extends Component {
       signTransaction: this.handleSignTransaction,
       signMessage: this.handleSignMessage,
       verifyMessage: this.verifyMessage,
-      reconnect: this.connectToTrezor,
+      reconnect: this.getDefaultPubKey,
       error,
     };
   };
@@ -47,52 +83,27 @@ export default class TrezorReactContainer extends Component {
   getErrorProps = () => {
     const { error, trezor } = this.state;
     return {
-      reconnect: this.connectToTrezor,
+      reconnect: this.getDefaultPubKey,
       error,
       trezor,
     };
   };
 
-  connectToTrezor() {
-    const { expect } = this.props;
-    const { kdPath } = expect || {};
-    TrezorConnect.getXPubKey(
-      kdPath || `${DEFAULT_KD_PATH}0`,
-      response => {
-        if (response.success) {
-          const wallet = HdKey.fromExtendedKey(response.xpubkey);
-          // const addresses = [];
-          // for (let i = 0; i <= 5; i++) {
-          //   const wallet = hdWallet.deriveChild(i).getWallet();
-          //   const address = `${i} - 0x${wallet.getAddress().toString('hex')}`;
-          //   // console.log(address);
-          //   addresses.push(address);
-          // }
-          this.setState({ trezor: { wallet }, showAddresses: true });
-        } else {
-          this.setState({ error: response.error, trezor: undefined });
-        }
-        // document.getElementById('response').innerHTML = JSON.stringify(response, undefined, 2);
-      },
-      '1.4.0'
-    ); // 1.4.0 is first firmware that supports ethereum
+  handleSignTransaction(kdPath, txData) {
+    if (!this.ethTrezor) this.ethTrezor = this.getTrezor();
+    console.count();
+    return signTransaction(this.ethTrezor, kdPath, txData);
   }
 
-  handleSignTransaction(kdPath, txData) {
-    // const { ethLedger } = this;
-    return signTransaction(kdPath, txData);
-    // return this.pausePollingForPromise(() => signTransaction({ ethLedger, kdPath, txData }));
-  }
   handleSignMessage(kdPath, txData) {
-    // const { ethLedger } = this;
-    // return this.pausePollingForPromise(() => signMessage({ ethLedger, kdPath, txData }));
-    return signMessage(kdPath, txData);
+    if (!this.ethTrezor) this.ethTrezor = this.getTrezor();
+    return signMessage(this.ethTrezor, kdPath, txData);
   }
 
   handleVerifyMessage(kdPath, txData) {
-    // const { ethLedger } = this;
+    const { ethTrezor } = this;
     // return this.pausePollingForPromise(() => signMessage({ ethLedger, kdPath, txData }));
-    return verifyMessage(kdPath, txData);
+    return verifyMessage(ethTrezor, kdPath, txData);
   }
 
   renderReady = () => this.props.renderReady(this.getChildProps());
@@ -110,19 +121,29 @@ export default class TrezorReactContainer extends Component {
   renderLoading = () => {
     const { renderLoading } = this.props;
     if (renderLoading) {
-      this.props.renderLoading();
+      return this.props.renderLoading();
     }
-    return null;
+    return <div>Ready to sign</div>;
   };
 
+  renderSigningReady = () => {
+    const { renderReady, onReady } = this.props;
+    if (renderReady) {
+      // this.setState({ ready: true });
+      onReady(this.getChildProps());
+      return this.props.renderReady(this.getChildProps());
+    }
+    return <div>Ready to Sign...</div>;
+  };
   render() {
-    const { showAddresses, error } = this.state;
+    const { error, showAddresses, loading } = this.state;
+    const { signed } = this.props;
+    if (loading) return this.renderLoading();
 
     if (showAddresses) return this.renderAddresses();
 
-    if (this.props.renderReady) this.props.renderReady(this.getChildProps());
-
-    if (this.props.onReady) this.props.onReady(this.getChildProps());
+    if (!signed && this.props.renderReady) return this.renderSigningReady();
+    // if (this.props.onReady) this.props.onReady(this.getChildProps());
 
     if (error) return this.renderError();
 
@@ -131,11 +152,12 @@ export default class TrezorReactContainer extends Component {
 }
 
 TrezorReactContainer.propTypes = {
-  renderReady: PropTypes.func.isRequired,
+  renderReady: PropTypes.func,
   getAddresses: PropTypes.func,
   renderLoading: PropTypes.func,
   renderError: PropTypes.func,
   onReady: PropTypes.func,
+  signed: PropTypes.bool,
   expect: PropTypes.shape({
     kdPath: PropTypes.string,
     address: PropTypes.string,

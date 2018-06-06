@@ -8,3 +8,9 @@ export function sanitizeAddress(address) {
 export function decimalToHex(dec) {
   return new BigNumber(dec).toString(16);
 }
+
+export function hex(val) {
+  if (val.length % 2 !== 0) return `0${val}`;
+
+  return val;
+}
