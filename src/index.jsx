@@ -4,13 +4,7 @@ import HdKey from 'ethereumjs-wallet/hdkey';
 
 import TrezorConnect from './connect';
 import { DEFAULT_KD_PATH } from './constants';
-import {
-  signTransaction,
-  signMessage,
-  verifyMessage,
-  trezorSignTx,
-  trezorEthereumGetAddress,
-} from './signing';
+import { signTransaction, signMessage, verifyMessage } from './signing';
 
 export default class TrezorReactContainer extends Component {
   constructor(props) {
@@ -18,8 +12,7 @@ export default class TrezorReactContainer extends Component {
     this.state = { error: false, ready: false, showAddresses: false, trezor: {}, loading: true };
     this.handleSignTransaction = this.handleSignTransaction.bind(this);
     this.handleSignMessage = this.handleSignMessage.bind(this);
-    // this.getDefaultPubKey = this.getDefaultPubKey.bind(this);
-    // this.getTrezor = this.getTrezor.bind(this);
+    this.getTrezor = this.getTrezor.bind(this);
     this.ethTrezor = this.getTrezor();
   }
 
@@ -27,33 +20,34 @@ export default class TrezorReactContainer extends Component {
     const { wallet } = this.state.trezor;
     const { getAddresses } = this.props;
     if (!wallet && getAddresses) {
-      this.getDefaultPubKey()
-        .then(result => {
-          const hdWallet = HdKey.fromExtendedKey(result.xpubkey);
-          this.setState({ trezor: { hdWallet }, showAddresses: true, loading: false });
-        })
-        .catch(error => {
-          this.setState({ showAddresses: false, loading: false, error });
-          this.props.renderError(error);
-        });
-    } else {
-      this.setState({ showAddresses: false, loading: false, error: undefined });
+      this.getTrezorWallet();
     }
+    this.setState({ showAddresses: false, loading: false, error: undefined });
   }
 
   getTrezor = () => new TrezorConnect();
 
-  // componentDidMount() {
-  //   return trezorSignTx();
-  // }
+  getTrezorWallet = () => {
+    this.getDefaultPubKey()
+      .then(result => {
+        const hdWallet = HdKey.fromExtendedKey(result.xpubkey);
+        this.setState({ trezor: { hdWallet }, showAddresses: true, loading: false });
+      })
+      .catch(error => {
+        this.setState({ showAddresses: false, loading: false, error });
+        if (this.props.onError) {
+          this.props.renderError(error);
+          this.props.onError();
+        }
+      });
+  };
 
   getDefaultPubKey() {
-    const { expect } = this.props;
+    const { expect } = this.props || {};
     const { kdPath } = expect || {};
-    if (!this.ethTrezor) this.ethTrezor = this.getTrezor();
-    this.ethTrezor.closeAfterSuccess(true);
+    const ethTrezor = new TrezorConnect();
     return new Promise((resolve, reject) => {
-      this.ethTrezor.getXPubKey(
+      ethTrezor.getXPubKey(
         kdPath || `${DEFAULT_KD_PATH}0`,
         response => {
           if (response.success) {
@@ -75,7 +69,8 @@ export default class TrezorReactContainer extends Component {
       signTransaction: this.handleSignTransaction,
       signMessage: this.handleSignMessage,
       verifyMessage: this.verifyMessage,
-      reconnect: this.getDefaultPubKey,
+      reconnect: this.getTrezorWallet,
+      onSuccess: this.props.onSuccess,
       error,
     };
   };
@@ -91,7 +86,6 @@ export default class TrezorReactContainer extends Component {
 
   handleSignTransaction(kdPath, txData) {
     if (!this.ethTrezor) this.ethTrezor = this.getTrezor();
-    console.count();
     return signTransaction(this.ethTrezor, kdPath, txData);
   }
 
@@ -102,9 +96,13 @@ export default class TrezorReactContainer extends Component {
 
   handleVerifyMessage(kdPath, txData) {
     const { ethTrezor } = this;
-    // return this.pausePollingForPromise(() => signMessage({ ethLedger, kdPath, txData }));
     return verifyMessage(ethTrezor, kdPath, txData);
   }
+
+  realoadPubKey = () => {
+    this.getTrezorWallet();
+    return this.renderAddresses();
+  };
 
   renderReady = () => this.props.renderReady(this.getChildProps());
 
@@ -112,7 +110,7 @@ export default class TrezorReactContainer extends Component {
 
   renderError = () => {
     const { error } = this.state;
-    if (error) {
+    if (error && this.props.renderError) {
       return this.props.renderError(this.getErrorProps());
     }
     return null;
@@ -123,27 +121,28 @@ export default class TrezorReactContainer extends Component {
     if (renderLoading) {
       return this.props.renderLoading();
     }
-    return <div>Ready to sign</div>;
+    return null;
   };
 
   renderSigningReady = () => {
     const { renderReady, onReady } = this.props;
     if (renderReady) {
-      // this.setState({ ready: true });
       onReady(this.getChildProps());
       return this.props.renderReady(this.getChildProps());
     }
     return <div>Ready to Sign...</div>;
   };
+
   render() {
     const { error, showAddresses, loading } = this.state;
-    const { signed } = this.props;
+    const { signed, realoadPubKey } = this.props;
     if (loading) return this.renderLoading();
+
+    if (realoadPubKey) return this.realoadPubKey();
 
     if (showAddresses) return this.renderAddresses();
 
     if (!signed && this.props.renderReady) return this.renderSigningReady();
-    // if (this.props.onReady) this.props.onReady(this.getChildProps());
 
     if (error) return this.renderError();
 
@@ -158,6 +157,9 @@ TrezorReactContainer.propTypes = {
   renderError: PropTypes.func,
   onReady: PropTypes.func,
   signed: PropTypes.bool,
+  realoadPubKey: PropTypes.bool,
+  onError: PropTypes.func,
+  onSuccess: PropTypes.func,
   expect: PropTypes.shape({
     kdPath: PropTypes.string,
     address: PropTypes.string,

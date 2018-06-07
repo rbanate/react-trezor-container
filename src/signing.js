@@ -21,9 +21,9 @@ export function signTransaction(trezor, kdPath, txData) {
   return new Promise((resolve, reject) => {
     trezor.ethereumSignTx(
       kdPath,
-      util.stripHexPrefix(sanitizedTxData.nonce),
+      hex(util.stripHexPrefix(sanitizedTxData.nonce)),
       hex(util.stripHexPrefix(sanitizedTxData.gasPrice)),
-      util.stripHexPrefix(sanitizedTxData.gasLimit),
+      hex(util.stripHexPrefix(sanitizedTxData.gasLimit)),
       util.stripHexPrefix(sanitizedTxData.to),
       hex(util.stripHexPrefix(sanitizedTxData.value)),
       util.stripHexPrefix(sanitizedTxData.data),
@@ -69,7 +69,8 @@ export function signMessage(trezor, kdPath, txData) {
         // address.value = response.address;
         // messageV.value = message.value;
         // signature.value = response.signature;
-        return resolve(addHexPrefix(response.signature));
+        const signature = addHexPrefix(response.signature);
+        return resolve(signature);
       }
       // address.value = '';
       // messageV.value = '';
